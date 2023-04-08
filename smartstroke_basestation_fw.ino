@@ -4,13 +4,14 @@
 #include <WebServer.h>
 
 #define LED 2
+int ledState = LOW;
 
 WebServer server(80);
 
 void handleRoot() {
   server.send(200, "text/plain", "Ready");
 }
-ma
+
 void handleGet() {
   if (server.hasArg("data")) {
     String data = server.arg("data");
@@ -74,6 +75,8 @@ void OnDataRecv(const uint8_t * mac_addr, const uint8_t *incomingData, int len) 
  
 
 void setup() {
+  pinMode(LED, OUTPUT);
+
   //Initialize Serial Monitor
   Serial.begin(115200);
   Serial.println();
@@ -110,4 +113,6 @@ void loop() {
   server.handleClient();  
   delay(10000);  
 
+  ledState = !ledState;
+  digitalWrite(LED, ledState); 
 }
