@@ -10,16 +10,18 @@
 //----------------------------------------
 //          Definitions
 //----------------------------------------
-#define SERIAL_PLOTTER 1
-#define DEBUG_VERBOSE 0
+//#define SERIAL_PLOTTER 0
+//#define DEBUG_VERBOSE 0
 
 #define LED 2
-#define SERIAL_BAUD_RATE 921600
+#define SERIAL_BAUD_RATE 115200
 
 //----------------------------------------
 //          Globals
 //----------------------------------------
 int ledState = LOW;
+unsigned long startTime;
+int checkBoard = 0;
 
 //----------------------------------------
 //          Helper Functions
@@ -133,6 +135,13 @@ void OnDataRecv(const uint8_t* mac_addr, const uint8_t* incomingData, int len) {
 #endif
 }
 
+void flushSerialInput() {
+    delay(1);
+    while (Serial.available()) {
+      Serial.read();
+    }
+}
+
 //----------------------------------------
 //          Setup
 //----------------------------------------
@@ -147,6 +156,8 @@ void setup() {
   server.on("/get", HTTP_GET, handleGet);
   server.on("/post", HTTP_POST, handlePost, handleUpload);
   server.begin();
+
+  startTime = millis();
 
   //Set device as a Wi-Fi Station
   WiFi.mode(WIFI_STA);
@@ -166,40 +177,100 @@ void setup() {
 //          Main Loop
 //----------------------------------------
 void loop() {
+
+  checkBoard++;
+  if(checkBoard > 1000)
+  {
+    int board_1_time = boardsStruct[0].time;
+    int board_1_AccX = boardsStruct[0].AccX;
+    int board_1_AccY = boardsStruct[0].AccY;
+    int board_1_AccZ = boardsStruct[0].AccZ;
+    int board_1_ADC = boardsStruct[0].ADC;
+    int board_1_GyroX = boardsStruct[0].GyroX;
+    int board_1_GyroY = boardsStruct[0].GyroY;
+    int board_1_GyroZ = boardsStruct[0].GyroZ;
+
+    // Board 2
+    int board_2_time = boardsStruct[1].time;
+    int board_2_AccX = boardsStruct[1].AccX;
+    int board_2_AccY = boardsStruct[1].AccY;
+    int board_2_AccZ = boardsStruct[1].AccZ;
+    int board_2_ADC = boardsStruct[1].ADC;
+    int board_2_GyroX = boardsStruct[1].GyroX;
+    int board_2_GyroY = boardsStruct[1].GyroY;
+    int board_2_GyroZ = boardsStruct[1].GyroZ;
+
+    // Board 3
+    int board_3_time = boardsStruct[2].time;
+    int board_3_AccX = boardsStruct[2].AccX;
+    int board_3_AccY = boardsStruct[2].AccY;
+    int board_3_AccZ = boardsStruct[2].AccZ;
+    int board_3_ADC = boardsStruct[2].ADC;
+    int board_3_GyroX = boardsStruct[2].GyroX;
+    int board_3_GyroY = boardsStruct[2].GyroY;
+    int board_3_GyroZ = boardsStruct[2].GyroZ;
+    server.handleClient();
+
+    ledState = !ledState;
+    digitalWrite(LED, ledState);
+
+    checkBoard = 0;
+  }
+
+  if (!Serial.available()) {
+      return;
+  }
+  flushSerialInput();
+
+  // Prep time data
+  unsigned long time = millis() - startTime;
+
+  Serial.print(time);
+  Serial.print(" ");
+  Serial.print(boardsStruct[0].ADC);
+  Serial.print(" ");
+  Serial.print(boardsStruct[0].AccX);
+  Serial.print(" ");
+  Serial.print(time / 1000);
+  Serial.print(" ");
+  Serial.print(time % 1000);
+  Serial.println();
+
+
   // Acess the variables for each board
   //Serial.println("Loop");
   // Board 1
-  int board_1_time = boardsStruct[0].time;
-  int board_1_AccX = boardsStruct[0].AccX;
-  int board_1_AccY = boardsStruct[0].AccY;
-  int board_1_AccZ = boardsStruct[0].AccZ;
-  int board_1_ADC = boardsStruct[0].ADC;
-  int board_1_GyroX = boardsStruct[0].GyroX;
-  int board_1_GyroY = boardsStruct[0].GyroY;
-  int board_1_GyroZ = boardsStruct[0].GyroZ;
+  // int board_1_time = boardsStruct[0].time;
+  // int board_1_AccX = boardsStruct[0].AccX;
+  // int board_1_AccY = boardsStruct[0].AccY;
+  // int board_1_AccZ = boardsStruct[0].AccZ;
+  // int board_1_ADC = boardsStruct[0].ADC;
+  // int board_1_GyroX = boardsStruct[0].GyroX;
+  // int board_1_GyroY = boardsStruct[0].GyroY;
+  // int board_1_GyroZ = boardsStruct[0].GyroZ;
 
-  // Board 2
-  int board_2_time = boardsStruct[1].time;
-  int board_2_AccX = boardsStruct[1].AccX;
-  int board_2_AccY = boardsStruct[1].AccY;
-  int board_2_AccZ = boardsStruct[1].AccZ;
-  int board_2_ADC = boardsStruct[1].ADC;
-  int board_2_GyroX = boardsStruct[1].GyroX;
-  int board_2_GyroY = boardsStruct[1].GyroY;
-  int board_2_GyroZ = boardsStruct[1].GyroZ;
+  // // Board 2
+  // int board_2_time = boardsStruct[1].time;
+  // int board_2_AccX = boardsStruct[1].AccX;
+  // int board_2_AccY = boardsStruct[1].AccY;
+  // int board_2_AccZ = boardsStruct[1].AccZ;
+  // int board_2_ADC = boardsStruct[1].ADC;
+  // int board_2_GyroX = boardsStruct[1].GyroX;
+  // int board_2_GyroY = boardsStruct[1].GyroY;
+  // int board_2_GyroZ = boardsStruct[1].GyroZ;
 
-  // Board 3
-  int board_3_time = boardsStruct[2].time;
-  int board_3_AccX = boardsStruct[2].AccX;
-  int board_3_AccY = boardsStruct[2].AccY;
-  int board_3_AccZ = boardsStruct[2].AccZ;
-  int board_3_ADC = boardsStruct[2].ADC;
-  int board_3_GyroX = boardsStruct[2].GyroX;
-  int board_3_GyroY = boardsStruct[2].GyroY;
-  int board_3_GyroZ = boardsStruct[2].GyroZ;
-  server.handleClient();
-  delay(10000);
+  // // Board 3
+  // int board_3_time = boardsStruct[2].time;
+  // int board_3_AccX = boardsStruct[2].AccX;
+  // int board_3_AccY = boardsStruct[2].AccY;
+  // int board_3_AccZ = boardsStruct[2].AccZ;
+  // int board_3_ADC = boardsStruct[2].ADC;
+  // int board_3_GyroX = boardsStruct[2].GyroX;
+  // int board_3_GyroY = boardsStruct[2].GyroY;
+  // int board_3_GyroZ = boardsStruct[2].GyroZ;
+  // server.handleClient();
+  // delay(10000);
 
-  ledState = !ledState;
-  digitalWrite(LED, ledState);
+  // ledState = !ledState;
+  // digitalWrite(LED, ledState);
 }
