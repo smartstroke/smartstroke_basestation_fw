@@ -227,9 +227,9 @@ void loop() {
 
   Serial.print(time);
   Serial.print(" ");
-  Serial.print(boardsStruct[0].ADC);
+  Serial.print(map(boardsStruct[0].ADC, 0, 4095, 4095, 0));
   Serial.print(" ");
-  Serial.print(boardsStruct[0].AccX);
+  Serial.print(map(boardsStruct[0].GyroX, 0, 4095, 4095, 0));
   Serial.print(" ");
   Serial.print(time / 1000);
   Serial.print(" ");
