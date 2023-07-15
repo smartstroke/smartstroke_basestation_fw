@@ -1,173 +1,218 @@
-//Base Station to App code
-
-//----------------------------------------
-//          Includes
-//----------------------------------------
 #include <esp_now.h>
 #include <WiFi.h>
-#include <WebServer.h>
+#include <BLEDevice.h>
+#include <BLEUtils.h>
+#include <BLEServer.h>
 
-//----------------------------------------
-//          Definitions
-//----------------------------------------
-#define SERIAL_PLOTTER 1
-#define DEBUG_VERBOSE 0
+// See the following for generating UUIDs:
+// https://www.uuidgenerator.net/
 
-#define LED 2
-#define SERIAL_BAUD_RATE 921600
-
-//----------------------------------------
-//          Globals
-//----------------------------------------
-int ledState = LOW;
-
-//----------------------------------------
-//          Helper Functions
-//----------------------------------------
-WebServer server(80);
-
-void handleRoot() {
-  server.send(200, "text/plain", "Ready");
-}
-
-void handleGet() {
-  if (server.hasArg("data")) {
-    String data = server.arg("data");
-    Serial.println("Data: " + data);
-  }
-  server.send(200, "text/plain", "Data Received");
-}
-
-void handlePost() {
-  server.send(200, "text/plain", "Processing Data");
-}
-
-void handleUpload() {
-  HTTPUpload& upload = server.upload();
-  if (upload.status == UPLOAD_FILE_START) {
-    Serial.println("Receiving data:");
-  } else if (upload.status == UPLOAD_FILE_WRITE) {
-    Serial.write(upload.buf, upload.currentSize);
-  } else if (upload.status == UPLOAD_FILE_END) {
-    server.send(200, "text/plain", "Data: ");
-  }
-}
+#define SMARTSTROKE_UUID "8bbd2160-84fa-43fb-8779-feb9185daba1"
+#define SS_TIME_UUID "0a4a5dc5-23ef-46cc-beb4-ff5fa9a5c992"
+#define SS_FSR1_UUID "9fefbfec-8a18-4971-93b8-f83240cb85bb"
+#define SS_FSR2_UUID "9b92b831-2ae8-4659-80a4-c6d4652baa79"
+#define SS_FSR3_UUID "2315637b-84de-4851-88f8-0cbf3aa29f8a"
+#define SS_FSR4_UUID "e9c9be95-5bdb-4cb6-9783-084e33e11d41"
+#define SS_DEBUG_UUID "b3d4772d-f279-4435-9a6c-e1a5c42472f6"
+#include <Arduino.h>
 
 //Recive from Paddle
 //My MAC 8c:aa:b5:8c:4a:38
 // Structure example to receive data
 // Must match the sender structure
 typedef struct struct_message {
-  int id;  // must be unique for each sender board
-  long int time;
-  int AccX;
-  int AccY;
-  int AccZ;
-  int ADC;
-  int GyroX;
-  int GyroY;
-  int GyroZ;
-} struct_message;
+    int id; // must be unique for each sender board
+    long int time;
+    int AccX;
+    int AccY;
+    int AccZ;
+    int ADC; 
+    int GyroX;
+    int GyroY;
+    int GyroZ;
+}struct_message;
 
-// Create a struct_message called myData
-struct_message myData;
+typedef struct handshake_signal {
+  int id;
+  int num_connect;
+}handshake_signal;
 
+int i = 0;
+bool Sendflag = true;
+esp_now_peer_info_t peerInfo;
+
+uint8_t paddle1Address[] = {0x7c, 0xdf, 0xa1, 0xf2, 0xc5, 0x34};
+uint8_t paddle2Address[] = {0x7c, 0xdf, 0xa1, 0xf2, 0xc5, 0x3c};
+uint8_t paddle3Address[] = {0x7c, 0xdf, 0xa1, 0xf2, 0xc5, 0x8c};
+uint8_t paddle4Address[] = {0x8c, 0xaa, 0xb5, 0x8c, 0x4a, 0x38};
+ //Create a struct_message called myData
+struct_message PROGMEM myData;
+handshake_signal Id_check;
 // Create a structure to hold the readings from each board
 struct_message Paddle_board1;
 struct_message Paddle_board2;
 struct_message Paddle_board3;
+struct_message Paddle_board4;
 
 // Create an array with all the structures
-struct_message boardsStruct[3] = { Paddle_board1, Paddle_board2, Paddle_board3 };
+struct_message boardsStruct[4] = {Paddle_board1, Paddle_board2, Paddle_board3, Paddle_board4};
+class MyCallbacks: public BLECharacteristicCallbacks
+{
+  void onWrite(BLECharacteristic *pCharacteristic)
+  {
+      Serial.println("*********");
+      Serial.print("New value: ");
+      Serial.println(pCharacteristic->getValue().c_str());
+      Serial.println("*********");
+  }
+};
 
-// callback function that will be executed when data is received
-void OnDataRecv(const uint8_t* mac_addr, const uint8_t* incomingData, int len) {
-  char macStr[18];
-#ifdef DEBUG_VERBOSE
-  Serial.print("Packet received from: ");
-#endif
-  snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
-           mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
-#ifdef DEBUG_VERBOSE
-  Serial.println(macStr);
-#endif
-  memcpy(&myData, incomingData, sizeof(myData));
-#ifdef DEBUG_VERBOSE
-  Serial.printf("Board ID %u: %u bytes\r\n", myData.id, len);
-#endif
-  // Update the structures with the new incoming data
-  boardsStruct[myData.id - 1].time = myData.time;
-  boardsStruct[myData.id - 1].AccX = myData.AccX;
-  boardsStruct[myData.id - 1].AccY = myData.AccY;
-  boardsStruct[myData.id - 1].AccZ = myData.AccZ;
-  boardsStruct[myData.id - 1].ADC = myData.ADC;
-  boardsStruct[myData.id - 1].GyroX = myData.GyroX;
-  boardsStruct[myData.id - 1].GyroY = myData.GyroY;
-  boardsStruct[myData.id - 1].GyroZ = myData.GyroZ;
+class MyServerCallbacks: public BLEServerCallbacks {
+    void onDisconnect(BLEServer* pServer) {
+      pServer->startAdvertising(); // restart advertising
+      Serial.println("Connection lost, readvertising");
+    }
+};
 
-#ifdef DEBUG_VERBOSE
-  Serial.printf("time:%d ", boardsStruct[myData.id - 1].time);
-  Serial.printf("AccX:%d ", boardsStruct[myData.id - 1].AccX);
-  Serial.printf("AccY:%d ", boardsStruct[myData.id - 1].AccY);
-  Serial.printf("AccZ:%d ", boardsStruct[myData.id - 1].AccZ);
-  Serial.printf("ADC:%d ", boardsStruct[myData.id - 1].ADC);
-  Serial.printf("GyroX:%d ", boardsStruct[myData.id - 1].GyroX);
-  Serial.printf("GyroY:%d ", boardsStruct[myData.id - 1].GyroY);
-  Serial.printf("GyroZ:%d ", boardsStruct[myData.id - 1].GyroZ);
-  Serial.println();
-#endif
-
-#ifdef SERIAL_PLOTTER
-  Serial.printf("time:%d ", boardsStruct[myData.id - 1].time);
-  Serial.printf("AccX:%d ", boardsStruct[0].AccX);
-  Serial.printf("AccY:%d ", boardsStruct[0].AccY);
-  Serial.printf("AccZ:%d ", boardsStruct[0].AccZ);
-  Serial.printf("AccX2:%d ", boardsStruct[1].AccX);
-  Serial.printf("AccY2:%d ", boardsStruct[1].AccY);
-  Serial.printf("AccZ2:%d ", boardsStruct[1].AccZ);
-  Serial.printf("ADC:%d ", boardsStruct[myData.id - 1].ADC);
-  Serial.printf("GyroX:%d ", boardsStruct[myData.id - 1].GyroX);
-  Serial.printf("GyroY:%d ", boardsStruct[myData.id - 1].GyroY);
-  Serial.printf("GyroZ:%d ", boardsStruct[myData.id - 1].GyroZ);
-  Serial.println();
-#endif
-}
-
-//----------------------------------------
-//          Setup
-//----------------------------------------
+BLEService *pService;
 void setup() {
-  pinMode(LED, OUTPUT);
-
   //Initialize Serial Monitor
-  Serial.begin(SERIAL_BAUD_RATE);
+  Serial.begin(115200);
   Serial.println();
   WiFi.softAP("ESP32");
-  server.on("/", handleRoot);
-  server.on("/get", HTTP_GET, handleGet);
-  server.on("/post", HTTP_POST, handlePost, handleUpload);
-  server.begin();
+  
 
-  //Set device as a Wi-Fi Station
   WiFi.mode(WIFI_STA);
-
+  Serial.print("ESP Board MAC Address:  ");
+  Serial.println(WiFi.macAddress());
   //Init ESP-NOW
   if (esp_now_init() != ESP_OK) {
     Serial.println("Error initializing ESP-NOW");
     return;
   }
 
+  // Once ESPNow is successfully Init, we will register for Send CB to
+  // get the status of Trasnmitted packet
+  esp_now_register_send_cb(OnDataSent);
+
+  //Set device as a Wi-Fi Station
+  WiFi.mode(WIFI_STA);
+  
+  memcpy(peerInfo.peer_addr, paddle1Address, 6);
+  peerInfo.channel = 0;
+  peerInfo.encrypt = false;
+  memcpy(peerInfo.peer_addr, paddle2Address, 6);
+  peerInfo.channel = 0;
+  peerInfo.encrypt = false;
+  memcpy(peerInfo.peer_addr, paddle3Address, 6);
+  peerInfo.channel = 0;
+  peerInfo.encrypt = false;
+  memcpy(peerInfo.peer_addr, paddle4Address, 6);
+  peerInfo.channel = 0;
+  peerInfo.encrypt = false;
+  //Add peer        
+  if (esp_now_add_peer(&peerInfo) != ESP_OK){
+    Serial.println("Failed to add peer");
+    return;
+  }
   //Once ESPNow is successfully Init, we will register for recv CB to
   //get recv packer info
   esp_now_register_recv_cb(OnDataRecv);
-}
+  Id_check.num_connect = 4;
+  while (!Serial);
+    Serial.println("Starting BLE work!");
 
-//----------------------------------------
-//          Main Loop
-//----------------------------------------
+     BLEDevice::init("SmartStroker9001Elite");
+  BLEServer *pServer = BLEDevice::createServer();
+  pServer->setCallbacks(new MyServerCallbacks());
+  pService = pServer->createService(SMARTSTROKE_UUID);
+  BLECharacteristic *pDebugCharacteristic = pService->createCharacteristic(
+                                         SS_DEBUG_UUID,
+                                         BLECharacteristic::PROPERTY_READ |
+                                         BLECharacteristic::PROPERTY_WRITE |
+                                         BLECharacteristic::PROPERTY_WRITE_NR
+                                       );
+  pDebugCharacteristic->setCallbacks(new MyCallbacks());
+  pDebugCharacteristic->setValue("Hello World says Smart Stroke");
+
+  BLECharacteristic *pTimeCharacteristic = pService->createCharacteristic(
+                                         SS_TIME_UUID,
+                                         BLECharacteristic::PROPERTY_READ |
+                                         BLECharacteristic::PROPERTY_WRITE
+                                       );
+
+  BLECharacteristic *pFSR1Characteristic = pService->createCharacteristic(
+                                         SS_FSR1_UUID,
+                                         BLECharacteristic::PROPERTY_READ |
+                                         BLECharacteristic::PROPERTY_WRITE
+                                       );
+
+  BLECharacteristic *pFSR2Characteristic = pService->createCharacteristic(
+                                         SS_FSR2_UUID,
+                                         BLECharacteristic::PROPERTY_READ |
+                                         BLECharacteristic::PROPERTY_WRITE
+                                       );
+
+  BLECharacteristic *pFSR3Characteristic = pService->createCharacteristic(
+                                         SS_FSR3_UUID,
+                                         BLECharacteristic::PROPERTY_READ |
+                                         BLECharacteristic::PROPERTY_WRITE
+                                       );
+
+  BLECharacteristic *pFSR4Characteristic = pService->createCharacteristic(
+                                         SS_FSR4_UUID,
+                                         BLECharacteristic::PROPERTY_READ |
+                                         BLECharacteristic::PROPERTY_WRITE);
+                                         
+  pService->start();
+  // BLEAdvertising *pAdvertising = pServer->getAdvertising();  // this still is working for backward compatibility
+  BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+  pAdvertising->addServiceUUID(SMARTSTROKE_UUID);
+  pAdvertising->setScanResponse(true);
+  pAdvertising->setMinPreferred(0x06);  // functions that help with iPhone connections issue
+  pAdvertising->setMinPreferred(0x12);
+  BLEDevice::startAdvertising();
+  Serial.println("Characteristic defined! Now you can read it in your phone!");
+}
+ 
 void loop() {
+
+  Serial.print("ESP Board MAC Address:  ");
+  Serial.println(WiFi.macAddress());
+  
   // Acess the variables for each board
-  //Serial.println("Loop");
+  
+  i += 1;
+  if(i > Id_check.num_connect){
+    i = 0;
+    i += 1;
+  }
+  Id_check.id = i;
+  Serial.println("Id_check");
+  Serial.println(i);
+  
+  esp_err_t result1 = esp_now_send(paddle1Address, (uint8_t *) &Id_check, sizeof(Id_check));
+  if (result1 == ESP_OK) {      
+    Serial.println("Sent with success");
+  }
+  
+  esp_err_t result2 = esp_now_send(paddle2Address, (uint8_t *) &Id_check, sizeof(Id_check));
+  if (result2 == ESP_OK) {      
+    Serial.println("Sent with success");
+  }
+  
+  esp_err_t result3 = esp_now_send(paddle3Address, (uint8_t *) &Id_check, sizeof(Id_check));
+  if (result3 == ESP_OK) {      
+    Serial.println("Sent with success");
+  }
+  
+  esp_err_t result4 = esp_now_send(paddle4Address, (uint8_t *) &Id_check, sizeof(Id_check));
+  if (result4 == ESP_OK) {      
+    Serial.println("Sent with success");
+  }
+  
+  
+
   // Board 1
   int board_1_time = boardsStruct[0].time;
   int board_1_AccX = boardsStruct[0].AccX;
@@ -197,9 +242,70 @@ void loop() {
   int board_3_GyroX = boardsStruct[2].GyroX;
   int board_3_GyroY = boardsStruct[2].GyroY;
   int board_3_GyroZ = boardsStruct[2].GyroZ;
-  server.handleClient();
-  delay(10000);
 
-  ledState = !ledState;
-  digitalWrite(LED, ledState);
+  // Board 4
+  int board_4_time = boardsStruct[3].time;
+  int board_4_AccX = boardsStruct[3].AccX;
+  int board_4_AccY = boardsStruct[3].AccY;
+  int board_4_AccZ = boardsStruct[3].AccZ;
+  int board_4_ADC = boardsStruct[3].ADC;
+  int board_4_GyroX = boardsStruct[3].GyroX;
+  int board_4_GyroY = boardsStruct[3].GyroY;
+  int board_4_GyroZ = boardsStruct[3].GyroZ;
+  
+  //BLE to phone
+  double denom = 4095.0/2.0;
+  BLECharacteristic *pTimeCharacteristic = pService->getCharacteristic(SS_TIME_UUID);
+  double time = (double)board_1_time;
+  pTimeCharacteristic->setValue(time);
+  BLECharacteristic *pFSR1Characteristic = pService->getCharacteristic(SS_FSR1_UUID);
+  double value1 = (((double)board_1_ADC)/denom) - 1.0;
+  pFSR1Characteristic->setValue(value1);
+  BLECharacteristic *pFSR2Characteristic = pService->getCharacteristic(SS_FSR2_UUID);
+  double value2 = (((double)board_2_ADC)/denom) - 1.0;
+  pFSR2Characteristic->setValue(value2);
+  BLECharacteristic *pFSR3Characteristic = pService->getCharacteristic(SS_FSR3_UUID);
+  double value3 = (((double)board_3_ADC)/denom) - 1.0;
+  pFSR3Characteristic->setValue(value3);
+  BLECharacteristic *pFSR4Characteristic = pService->getCharacteristic(SS_FSR4_UUID);
+  double value4 = (((double)board_4_ADC)/denom) - 1.0;
+  pFSR4Characteristic->setValue(value4);
+  delay(50);
+}
+
+
+
+// callback function that will be executed when data is received
+void OnDataRecv(const uint8_t * mac_addr, const uint8_t *incomingData, int len) {
+  char macStr[18];
+  Serial.println(F("Packet received from: ")); 
+  snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
+           mac_addr[0], mac_addr[1], mac_addr[2], mac_addr[3], mac_addr[4], mac_addr[5]);
+  Serial.println(macStr);
+  memcpy(&myData, incomingData, sizeof(myData));
+  Serial.printf("Board ID %u: %u bytes\n", myData.id, len);
+  // Update the structures with the new incoming data
+  boardsStruct[myData.id-1].time = myData.time;
+  boardsStruct[myData.id-1].AccX = myData.AccX;
+  boardsStruct[myData.id-1].AccY = myData.AccY;
+  boardsStruct[myData.id-1].AccZ = myData.AccZ;
+  boardsStruct[myData.id-1].ADC = myData.ADC;
+  boardsStruct[myData.id-1].GyroX = myData.GyroX;
+  boardsStruct[myData.id-1].GyroY = myData.GyroY;
+  boardsStruct[myData.id-1].GyroZ = myData.GyroZ;
+
+  Serial.printf("time: %d \n", boardsStruct[myData.id-1].time);
+  Serial.printf("AccX: %d \n", boardsStruct[myData.id-1].AccX);\
+  Serial.printf("AccY: %d \n", boardsStruct[myData.id-1].AccY);
+  Serial.printf("AccZ: %d \n", boardsStruct[myData.id-1].AccZ);
+  Serial.printf("ADC: %d \n", boardsStruct[myData.id-1].ADC);
+  Serial.printf("GyroX: %d \n", boardsStruct[myData.id-1].GyroX);
+  Serial.printf("GyroY: %d \n", boardsStruct[myData.id-1].GyroY);
+  Serial.printf("GyroZ: %d \n", boardsStruct[myData.id-1].GyroZ);
+  Serial.println();
+}
+ 
+void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
+  Serial.print("\r\nLast Packet Send Status:\t");
+  Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
 }
