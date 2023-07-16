@@ -23,13 +23,7 @@
 typedef struct struct_message {
     int id; // must be unique for each sender board
     long int time;
-    int AccX;
-    int AccY;
-    int AccZ;
     int ADC; 
-    int GyroX;
-    int GyroY;
-    int GyroZ;
 }struct_message;
 
 typedef struct handshake_signal {
@@ -74,6 +68,7 @@ class MyServerCallbacks: public BLEServerCallbacks {
     }
 };
 
+long int startTime = 0;
 BLEService *pService;
 void setup() {
   //Initialize Serial Monitor
@@ -122,7 +117,7 @@ void setup() {
   while (!Serial);
     Serial.println("Starting BLE work!");
 
-     BLEDevice::init("SmartStroker9001Elite");
+     BLEDevice::init("SmartStroker9001Elite 2A84");
   BLEServer *pServer = BLEDevice::createServer();
   pServer->setCallbacks(new MyServerCallbacks());
   pService = pServer->createService(SMARTSTROKE_UUID);
@@ -173,18 +168,19 @@ void setup() {
   pAdvertising->setMinPreferred(0x12);
   BLEDevice::startAdvertising();
   Serial.println("Characteristic defined! Now you can read it in your phone!");
+  startTime = millis();
 }
  
 void loop() {
-
-  Serial.print("ESP Board MAC Address:  ");
-  Serial.println(WiFi.macAddress());
   
   // Acess the variables for each board
+    Serial.print("ESP Board MAC Address:  ");
+  Serial.println(WiFi.macAddress());
   
-  i += 1;
-  if(i > Id_check.num_connect){
-    i = 0;
+  if(i >= Id_check.num_connect){
+    i = 1;
+  }
+  else{
     i += 1;
   }
   Id_check.id = i;
@@ -215,61 +211,37 @@ void loop() {
 
   // Board 1
   int board_1_time = boardsStruct[0].time;
-  int board_1_AccX = boardsStruct[0].AccX;
-  int board_1_AccY = boardsStruct[0].AccY;
-  int board_1_AccZ = boardsStruct[0].AccZ;
   int board_1_ADC = boardsStruct[0].ADC;
-  int board_1_GyroX = boardsStruct[0].GyroX;
-  int board_1_GyroY = boardsStruct[0].GyroY;
-  int board_1_GyroZ = boardsStruct[0].GyroZ;
 
   // Board 2
   int board_2_time = boardsStruct[1].time;
-  int board_2_AccX = boardsStruct[1].AccX;
-  int board_2_AccY = boardsStruct[1].AccY;
-  int board_2_AccZ = boardsStruct[1].AccZ;
   int board_2_ADC = boardsStruct[1].ADC;
-  int board_2_GyroX = boardsStruct[1].GyroX;
-  int board_2_GyroY = boardsStruct[1].GyroY;
-  int board_2_GyroZ = boardsStruct[1].GyroZ;
 
   // Board 3
   int board_3_time = boardsStruct[2].time;
-  int board_3_AccX = boardsStruct[2].AccX;
-  int board_3_AccY = boardsStruct[2].AccY;
-  int board_3_AccZ = boardsStruct[2].AccZ;
   int board_3_ADC = boardsStruct[2].ADC;
-  int board_3_GyroX = boardsStruct[2].GyroX;
-  int board_3_GyroY = boardsStruct[2].GyroY;
-  int board_3_GyroZ = boardsStruct[2].GyroZ;
 
   // Board 4
   int board_4_time = boardsStruct[3].time;
-  int board_4_AccX = boardsStruct[3].AccX;
-  int board_4_AccY = boardsStruct[3].AccY;
-  int board_4_AccZ = boardsStruct[3].AccZ;
   int board_4_ADC = boardsStruct[3].ADC;
-  int board_4_GyroX = boardsStruct[3].GyroX;
-  int board_4_GyroY = boardsStruct[3].GyroY;
-  int board_4_GyroZ = boardsStruct[3].GyroZ;
   
   //BLE to phone
-  double denom = 4095.0/2.0;
+  
   BLECharacteristic *pTimeCharacteristic = pService->getCharacteristic(SS_TIME_UUID);
-  double time = (double)board_1_time;
+  double time = (double)(millis() - startTime);
   pTimeCharacteristic->setValue(time);
   BLECharacteristic *pFSR1Characteristic = pService->getCharacteristic(SS_FSR1_UUID);
-  double value1 = (((double)board_1_ADC)/denom) - 1.0;
+  double value1 = (((double)board_1_ADC)/4095.0) - 1.0;
   pFSR1Characteristic->setValue(value1);
   BLECharacteristic *pFSR2Characteristic = pService->getCharacteristic(SS_FSR2_UUID);
-  double value2 = (((double)board_2_ADC)/denom) - 1.0;
+  double value2 = (((double)board_2_ADC)/4095.0) - 1.0;
   pFSR2Characteristic->setValue(value2);
   BLECharacteristic *pFSR3Characteristic = pService->getCharacteristic(SS_FSR3_UUID);
-  double value3 = (((double)board_3_ADC)/denom) - 1.0;
+  double value3 = (((double)board_3_ADC)/4095.0) - 1.0;
   pFSR3Characteristic->setValue(value3);
   BLECharacteristic *pFSR4Characteristic = pService->getCharacteristic(SS_FSR4_UUID);
-  double value4 = (((double)board_4_ADC)/denom) - 1.0;
-  pFSR4Characteristic->setValue(value4);
+  double value4 = (((double)board_4_ADC)/4095.0) - 1.0;
+  pFSR4Characteristic->setValue(value3);
   delay(50);
 }
 
@@ -286,22 +258,11 @@ void OnDataRecv(const uint8_t * mac_addr, const uint8_t *incomingData, int len) 
   Serial.printf("Board ID %u: %u bytes\n", myData.id, len);
   // Update the structures with the new incoming data
   boardsStruct[myData.id-1].time = myData.time;
-  boardsStruct[myData.id-1].AccX = myData.AccX;
-  boardsStruct[myData.id-1].AccY = myData.AccY;
-  boardsStruct[myData.id-1].AccZ = myData.AccZ;
   boardsStruct[myData.id-1].ADC = myData.ADC;
-  boardsStruct[myData.id-1].GyroX = myData.GyroX;
-  boardsStruct[myData.id-1].GyroY = myData.GyroY;
-  boardsStruct[myData.id-1].GyroZ = myData.GyroZ;
 
   Serial.printf("time: %d \n", boardsStruct[myData.id-1].time);
-  Serial.printf("AccX: %d \n", boardsStruct[myData.id-1].AccX);\
-  Serial.printf("AccY: %d \n", boardsStruct[myData.id-1].AccY);
-  Serial.printf("AccZ: %d \n", boardsStruct[myData.id-1].AccZ);
   Serial.printf("ADC: %d \n", boardsStruct[myData.id-1].ADC);
-  Serial.printf("GyroX: %d \n", boardsStruct[myData.id-1].GyroX);
-  Serial.printf("GyroY: %d \n", boardsStruct[myData.id-1].GyroY);
-  Serial.printf("GyroZ: %d \n", boardsStruct[myData.id-1].GyroZ);
+
   Serial.println();
 }
  
